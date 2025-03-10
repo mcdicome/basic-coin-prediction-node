@@ -1,11 +1,11 @@
 import os
 import pickle
-import numpy as np  # ✅ 修复 NameError
+import numpy as np
 import pandas as pd
 from sklearn.kernel_ridge import KernelRidge
 from sklearn.linear_model import BayesianRidge, LinearRegression
 from sklearn.svm import SVR
-from sklearn.neighbors import KNeighborsRegressor  # ✅ 支持 kNN
+from sklearn.neighbors import KNeighborsRegressor
 from updater import download_binance_daily_data, download_binance_current_day_data
 from config import data_base_path, model_file_path, TOKEN, MODEL
 
@@ -14,7 +14,7 @@ training_price_data_path = os.path.join(data_base_path, "price_data.csv")
 
 def download_data_binance(token, training_days, region):
     """下载 Binance 历史数据（返回 81 维特征的 DataFrame）"""
-    training_days = int(training_days)  # 确保是整数
+    training_days = int(training_days)
     df = download_binance_daily_data(f"{token}USDT", training_days, region, binance_data_path)
     print(f"Downloaded {df.shape[0]} rows with {df.shape[1]} features.")
     return df
@@ -40,7 +40,7 @@ def load_frame(frame, timeframe):
     print(f"[DEBUG] Loading frame with shape: {frame.shape}")
 
     df = frame.dropna()
-    df = df.fillna(0)  # ✅ 确保所有 NaN 变成 0
+    df = df.fillna(0)  # 确保所有 NaN 变成 0
     df['date'] = pd.to_datetime(df.index)
     df.set_index('date', inplace=True)
     df.sort_index(inplace=True)
@@ -58,9 +58,10 @@ def train_model(timeframe):
 
     df = df.dropna()
     y_train = df['target_ETHUSDT'].values
-    X_train = df.drop(columns=['target_ETHUSDT']).values
+    X_train = df.drop(columns=['target_ETHUSDT'])  # ✅ 保留 DataFrame 结构，避免 KNeighborsRegressor 警告
 
     print(f"[DEBUG] X_train Shape: {X_train.shape}, y_train Shape: {y_train.shape}")
+    print(f"[DEBUG] X_train columns: {X_train.columns.tolist()}")  # ✅ 确保特征列正确
 
     if np.isnan(X_train).sum() > 0 or np.isnan(y_train).sum() > 0:
         print("[ERROR] 数据仍然包含 NaN，检查数据预处理流程！")
@@ -106,6 +107,10 @@ def get_inference(token, timeframe, region, data_provider):
 
     print(f"[DEBUG] X_new Shape: {X_new.shape}")
     print(X_new.tail())
+
+    # **去掉列名，防止 KNeighborsRegressor 报错**
+    X_new = X_new.values
+    print(f"[DEBUG] X_new Shape after removing column names: {X_new.shape}")
 
     # **进行预测**
     current_price_pred = loaded_model.predict(X_new)
