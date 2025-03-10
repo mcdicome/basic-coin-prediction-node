@@ -1,10 +1,11 @@
 import os
 import pickle
+import numpy as np  # ✅ 修复 NameError
 import pandas as pd
 from sklearn.kernel_ridge import KernelRidge
 from sklearn.linear_model import BayesianRidge, LinearRegression
 from sklearn.svm import SVR
-from sklearn.neighbors import KNeighborsRegressor  # ✅ 新增 kNN 支持
+from sklearn.neighbors import KNeighborsRegressor  # ✅ 支持 kNN
 from updater import download_binance_daily_data, download_binance_current_day_data
 from config import data_base_path, model_file_path, TOKEN, MODEL
 
@@ -36,31 +37,31 @@ def format_data(df, data_provider):
 
 def load_frame(frame, timeframe):
     """加载 81 维特征的 DataFrame"""
-    print(f"Loading {frame.shape[0]} rows with {frame.shape[1]} features...")
+    print(f"[DEBUG] Loading frame with shape: {frame.shape}")
+
     df = frame.dropna()
+    df = df.fillna(0)  # ✅ 确保所有 NaN 变成 0
     df['date'] = pd.to_datetime(df.index)
     df.set_index('date', inplace=True)
     df.sort_index(inplace=True)
-    
+
+    print(f"[DEBUG] After preprocessing, frame shape: {df.shape}")
+
     return df.resample(f'{timeframe}', label='right', closed='right', origin='end').mean()
 
 def train_model(timeframe):
     """训练机器学习模型"""
-    # 加载 81 维特征数据
     df = pd.read_csv(training_price_data_path, index_col=0, parse_dates=True)
     df = load_frame(df, timeframe)
 
-    print(df.tail())
+    print(f"[DEBUG] Training Data Shape (should be 81 features): {df.shape}")
 
-    # **移除包含 NaN 的行**
     df = df.dropna()
-
     y_train = df['target_ETHUSDT'].values
     X_train = df.drop(columns=['target_ETHUSDT']).values
 
-    print(f"Training data shape: {X_train.shape}, {y_train.shape}")
+    print(f"[DEBUG] X_train Shape: {X_train.shape}, y_train Shape: {y_train.shape}")
 
-    # **再次检查是否仍然有 NaN**
     if np.isnan(X_train).sum() > 0 or np.isnan(y_train).sum() > 0:
         print("[ERROR] 数据仍然包含 NaN，检查数据预处理流程！")
         return
@@ -103,8 +104,8 @@ def get_inference(token, timeframe, region, data_provider):
 
     X_new = load_frame(X_new, timeframe)
 
+    print(f"[DEBUG] X_new Shape: {X_new.shape}")
     print(X_new.tail())
-    print(X_new.shape)
 
     # **进行预测**
     current_price_pred = loaded_model.predict(X_new)
