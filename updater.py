@@ -63,13 +63,54 @@ def download_binance_daily_data(pair, training_days, region, download_path):
         file_paths.extend(filter(None, results_eth))
         file_paths.extend(filter(None, results_btc))
 
-    # **检查文件路径是否正确**
     if not file_paths:
         print("[ERROR] No data files were downloaded.")
         return None
 
-    print(f"[DEBUG] Downloaded {len(file_paths)} files.")
-    return file_paths
+    # **加载所有 CSV 文件并转换为 DataFrame**
+    def load_binance_data(file_path):
+        df = pd.read_csv(file_path, header=None, names=[
+            "timestamp", "open", "high", "low", "close", "volume",
+            "close_time", "quote_asset_volume", "n_trades",
+            "taker_buy_base_vol", "taker_buy_quote_vol", "ignore"
+        ])
+        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", errors="coerce")
+        df = df.dropna(subset=["timestamp"])
+        df.set_index("timestamp", inplace=True)
+        df = df[["open", "high", "low", "close"]].astype(float)
+        return df
+
+    dfs = [load_binance_data(file_path) for file_path in file_paths]
+    
+    if not dfs:
+        print("[ERROR] No valid dataframes were loaded.")
+        return None
+
+    df_all = pd.concat(dfs).sort_index()
+
+    # **创建 ETHUSDT 和 BTCUSDT 滞后特征**
+    df_all = create_lag_features(df_all, "ETHUSDT")
+    df_all = create_lag_features(df_all, "BTCUSDT")
+
+    df_all["hour_of_day"] = df_all.index.hour
+    df_all["target_ETHUSDT"] = df_all["ETHUSDT_close_lag1"].shift(-1) - df_all["ETHUSDT_close_lag1"]
+
+    # **最终 81 维特征**
+    selected_columns = [
+        f"ETHUSDT_open_lag{i}" for i in range(1, 11)] + \
+        [f"ETHUSDT_high_lag{i}" for i in range(1, 11)] + \
+        [f"ETHUSDT_low_lag{i}" for i in range(1, 11)] + \
+        [f"ETHUSDT_close_lag{i}" for i in range(1, 11)] + \
+        [f"BTCUSDT_open_lag{i}" for i in range(1, 11)] + \
+        [f"BTCUSDT_high_lag{i}" for i in range(1, 11)] + \
+        [f"BTCUSDT_low_lag{i}" for i in range(1, 11)] + \
+        [f"BTCUSDT_close_lag{i}" for i in range(1, 11)] + \
+        ["hour_of_day", "target_ETHUSDT"]
+
+    df_final = df_all[selected_columns].dropna()
+    print(f"[DEBUG] Final DataFrame shape (should be 81 columns): {df_final.shape}")
+    
+    return df_final  # ✅ 返回 DataFrame，而不是 list
 
     # 读取 ETHUSDT 和 BTCUSDT 数据
     def load_binance_data(file_path, pair):
