@@ -1,175 +1,122 @@
-import os
-from datetime import date, timedelta
-import pathlib
-import time
-import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util import Retry
-from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
-import json
+import requests
+import numpy as np
+from datetime import datetime, timedelta
 
+BINANCE_API_URL = "https://api.binance.com/api/v3/klines"
 
-# Define the retry strategy
-retry_strategy = Retry(
-    total=4,  # Maximum number of retries
-    backoff_factor=2, # Exponential backoff factor (e.g., 2 means 1, 2, 4, 8 seconds, ...)
-    status_forcelist=[429, 500, 502, 503, 504],  # HTTP status codes to retry on
-)
-
-# Create an HTTP adapter with the retry strategy and mount it to session
-adapter = HTTPAdapter(max_retries=retry_strategy)
-
-# Create a new session object
-session = requests.Session()
-session.mount('http://', adapter)
-session.mount('https://', adapter)
-
-
-files = []
-
-
-# Function to download the URL, called asynchronously by several child processes
-def download_url(url, download_path, name=None):
-    try:
-        global files
-        if name:
-            file_name = os.path.join(download_path, name)
-        else:
-            file_name = os.path.join(download_path, os.path.basename(url))
-        dir_path = os.path.dirname(file_name)
-        pathlib.Path(dir_path).mkdir(parents=True, exist_ok=True) 
-        if os.path.isfile(file_name):
-            # print(f"{file_name} already exists")
-            return
-        # Make a request using the session object
-        response = session.get(url)
-        if response.status_code == 404:
-            print(f"File does not exist: {url}")
-        elif response.status_code == 200:
-            with open(file_name, 'wb') as f:
-                f.write(response.content)
-            # print(f"Downloaded: {url} to {file_name}")
-            files.append(file_name)
-            return
-        else:
-            print(f"Failed to download {url}")
-            return
-    except Exception as e:
-        print(str(e))
-
-
-# Function to generate a range of dates
-def daterange(start_date, end_date):
-    for n in range(int((end_date - start_date).days)):
-        yield start_date + timedelta(n)
-
-
-# Function to download daily data from Binance
-def download_binance_daily_data(pair, training_days, region, download_path):
-    base_url = f"https://data.binance.vision/data/spot/daily/klines"
-
-    end_date = date.today()
-    start_date = end_date - timedelta(days=int(training_days))
-    
-    global files
-    files = []
-
-    with ThreadPoolExecutor() as executor:
-        print(f"Downloading data for {pair}")
-        for single_date in daterange(start_date, end_date):
-            url = f"{base_url}/{pair}/1m/{pair}-1m-{single_date}.zip"
-            executor.submit(download_url, url, download_path)
-    
-    return files
-
-
-def download_binance_current_day_data(pair, region):
-    limit = 1000
-    base_url = f'https://api.binance.{region}/api/v3/klines?symbol={pair}&interval=1m&limit={limit}'
-
-    # Make a request using the session object
-    response = session.get(base_url)
-    response.raise_for_status()
-    resp = str(response.content, 'utf-8').rstrip()
-
-    columns = ['start_time','open','high','low','close','volume','end_time','volume_usd','n_trades','taker_volume','taker_volume_usd','ignore']
-    
-    df = pd.DataFrame(json.loads(resp),columns=columns)
-    df['date'] = [pd.to_datetime(x+1,unit='ms') for x in df['end_time']]
-    df['date'] = df['date'].apply(pd.to_datetime)
-    df[["volume", "taker_volume", "open", "high", "low", "close"]] = df[["volume", "taker_volume", "open", "high", "low", "close"]].apply(pd.to_numeric)
-
-    return df.sort_index()
-
-
-def get_coingecko_coin_id(token):
-    token_map = {
-        'ETH': 'ethereum',
-        'SOL': 'solana',
-        'BTC': 'bitcoin',
-        'BNB': 'binancecoin',
-        'ARB': 'arbitrum',
-        # Add more tokens here
+def fetch_binance_ohlc(symbol, interval, start_time, end_time):
+    """
+    从 Binance API 获取 K 线数据
+    :param symbol: 交易对 (ETHUSDT 或 BTCUSDT)
+    :param interval: K 线时间间隔 (如 '1h')
+    :param start_time: 数据开始时间 (datetime 对象)
+    :param end_time: 数据结束时间 (datetime 对象)
+    :return: K 线数据的列表
+    """
+    params = {
+        "symbol": symbol,
+        "interval": interval,
+        "startTime": int(start_time.timestamp() * 1000),
+        "endTime": int(end_time.timestamp() * 1000),
+        "limit": 1000  # Binance API 限制最多 1000 条数据
     }
-    
-    token = token.upper()
-    if token in token_map:
-        return token_map[token]
-    else:
-        raise ValueError("Unsupported token")
 
+    all_data = []
+    while True:
+        response = requests.get(BINANCE_API_URL, params=params)
+        data = response.json()
+        if not data:
+            break
+        all_data.extend(data)
+        params["startTime"] = data[-1][0] + 1  # 继续从最后一个时间点获取数据
+        if len(data) < 1000:
+            break  # 如果返回的数据小于 1000 条，说明已获取全部数据
+    return all_data
 
-def download_coingecko_data(token, training_days, download_path, CG_API_KEY):
-    if training_days <= 7:
-        days = 7
-    elif training_days <= 14:
-        days = 14
-    elif training_days <= 30:
-        days = 30
-    elif training_days <= 90:
-        days = 90
-    elif training_days <= 180:
-        days = 180
-    elif training_days <= 365:
-        days = 365
-    else:
-        days = "max"
-    print(f"Days: {days}")
+def process_ohlc_data(data):
+    """
+    处理 Binance K 线数据，将其转换为 DataFrame
+    :param data: Binance API 返回的 K 线数据
+    :return: 格式化后的 DataFrame
+    """
+    df = pd.DataFrame(data, columns=[
+        'timestamp', 'open', 'high', 'low', 'close', 'volume',
+        'close_time', 'quote_asset_volume', 'number_of_trades',
+        'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'
+    ])
+    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+    df.set_index('timestamp', inplace=True)
+    df = df[['open', 'high', 'low', 'close']].astype(float)
+    return df
 
-    coin_id = get_coingecko_coin_id(token)
-    print(f"Coin ID: {coin_id}")
+def create_lag_features(df, prefix, lags=10):
+    """
+    生成滞后特征
+    :param df: 原始 DataFrame
+    :param prefix: 列名前缀 (ETHUSDT 或 BTCUSDT)
+    :param lags: 需要创建的滞后步数
+    :return: 带有滞后特征的 DataFrame
+    """
+    for lag in range(1, lags + 1):
+        df[f'{prefix}_open_lag{lag}'] = df['open'].shift(lag)
+        df[f'{prefix}_high_lag{lag}'] = df['high'].shift(lag)
+        df[f'{prefix}_low_lag{lag}'] = df['low'].shift(lag)
+        df[f'{prefix}_close_lag{lag}'] = df['close'].shift(lag)
+    return df
 
-    # Get OHLC data from Coingecko
-    url = f'https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc?vs_currency=usd&days={days}&api_key={CG_API_KEY}'
+def download_binance_current_day_data():
+    """
+    下载 ETHUSDT 和 BTCUSDT 的 1 小时 K 线数据，并生成 81 个特征
+    :return: 处理后的 DataFrame
+    """
+    # 设定开始和结束时间（过去 24 小时的数据）
+    end_time = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
+    start_time = end_time - timedelta(days=1)  # 过去 24 小时数据
+    symbols = ['ETHUSDT', 'BTCUSDT']
+    interval = '1h'
+    lags = 10
+    all_features = pd.DataFrame()
 
-    global files
-    files = []
+    for symbol in symbols:
+        print(f"Fetching {symbol} data...")
+        raw_data = fetch_binance_ohlc(symbol, interval, start_time, end_time)
+        df = process_ohlc_data(raw_data)
+        df = create_lag_features(df, symbol)
 
-    with ThreadPoolExecutor() as executor:
-        print(f"Downloading data for {coin_id}")
-        name = os.path.basename(url).split("?")[0].replace("/", "_") + ".json"
-        executor.submit(download_url, url, download_path, name)
-    
-    return files
+        if all_features.empty:
+            all_features = df
+        else:
+            all_features = all_features.join(df, how='outer')
 
+    # 添加 hour_of_day 特征
+    all_features['hour_of_day'] = all_features.index.hour
 
-def download_coingecko_current_day_data(token, CG_API_KEY):
-    coin_id = get_coingecko_coin_id(token)
-    print(f"Coin ID: {coin_id}")
+    # 计算目标变量 target_ETHUSDT（未来 1 小时 ETHUSDT 的收盘价变化率）
+    all_features['target_ETHUSDT'] = all_features['ETHUSDT_close'].shift(-1) - all_features['ETHUSDT_close']
 
-    url = f'https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc?vs_currency=usd&days=1&api_key={CG_API_KEY}'
+    # 移除 NaN 值（因滞后特征导致的缺失数据）
+    all_features.dropna(inplace=True)
 
-    # Make a request using the session object
-    response = session.get(url)
-    response.raise_for_status()
-    resp = str(response.content, 'utf-8').rstrip()
+    # 选择最终的 81 个特征
+    selected_columns = [
+        f"open_ETHUSDT_lag{i}" for i in range(1, 11)] + \
+        [f"high_ETHUSDT_lag{i}" for i in range(1, 11)] + \
+        [f"low_ETHUSDT_lag{i}" for i in range(1, 11)] + \
+        [f"close_ETHUSDT_lag{i}" for i in range(1, 11)] + \
+        [f"open_BTCUSDT_lag{i}" for i in range(1, 11)] + \
+        [f"high_BTCUSDT_lag{i}" for i in range(1, 11)] + \
+        [f"low_BTCUSDT_lag{i}" for i in range(1, 11)] + \
+        [f"close_BTCUSDT_lag{i}" for i in range(1, 11)] + \
+        ["hour_of_day", "target_ETHUSDT"]
 
-    columns = ['timestamp','open','high','low','close']
-    
-    df = pd.DataFrame(json.loads(resp), columns=columns)
-    df['date'] = [pd.to_datetime(x,unit='ms') for x in df['timestamp']]
-    df['date'] = df['date'].apply(pd.to_datetime)
-    df[["open", "high", "low", "close"]] = df[["open", "high", "low", "close"]].apply(pd.to_numeric)
+    return all_features[selected_columns]
 
-    return df.sort_index()
+if __name__ == "__main__":
+    # 运行数据下载
+    df = download_binance_current_day_data()
+
+    # 保存到 CSV 文件
+    df.to_csv("binance_data.csv", index=True)
+
+    print("数据已下载并保存至 binance_data.csv")
