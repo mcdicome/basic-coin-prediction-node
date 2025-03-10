@@ -6,7 +6,7 @@ from sklearn.kernel_ridge import KernelRidge
 from sklearn.linear_model import BayesianRidge, LinearRegression
 from sklearn.svm import SVR
 from sklearn.neighbors import KNeighborsRegressor
-from updater import download_binance_daily_data, download_binance_current_day_data
+from updater import download_binance_daily_data, download_binance_current_day_data, create_lag_features
 from config import data_base_path, model_file_path, TOKEN, MODEL
 
 binance_data_path = os.path.join(data_base_path, "binance")
@@ -94,24 +94,34 @@ def train_model(timeframe):
     print(f"Trained model saved to {model_file_path}")
 
 def get_inference(token, timeframe, region, data_provider):
-    """加载训练好的模型并进行预测"""
+    """加载训练好的模型并进行推理"""
     with open(model_file_path, "rb") as f:
         loaded_model = pickle.load(f)
 
-    # 获取最新 81 维特征数据
+    # 获取最新 1m 数据
     if data_provider == "binance":
-        X_new = download_binance_current_day_data(f"{TOKEN}USDT", region)
+        df = download_binance_current_day_data(f"{TOKEN}USDT", region)
     else:
         raise ValueError("Unsupported data provider")
 
-    X_new = load_frame(X_new, timeframe)
+    # **确保 `create_lag_features()` 正确执行**
+    df = create_lag_features(df, "ETHUSDT")  
+    df = create_lag_features(df, "BTCUSDT")
+
+    # **确保 hour_of_day 存在**
+    df["hour_of_day"] = df.index.hour
+
+    # **删除 NaN**
+    df = df.dropna()
+
+    # **去掉 target_ETHUSDT**
+    X_new = df.drop(columns=["target_ETHUSDT"], errors="ignore")
 
     print(f"[DEBUG] X_new Shape: {X_new.shape}")
     print(X_new.tail())
 
-    # **去掉列名，防止 KNeighborsRegressor 报错**
+    # **去掉列名，确保与训练时一致**
     X_new = X_new.values
-    print(f"[DEBUG] X_new Shape after removing column names: {X_new.shape}")
 
     # **进行预测**
     current_price_pred = loaded_model.predict(X_new)
