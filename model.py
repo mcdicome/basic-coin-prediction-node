@@ -52,10 +52,18 @@ def train_model(timeframe):
 
     print(df.tail())
 
-    y_train = df['target_ETHUSDT'].dropna().values
-    X_train = df.drop(columns=['target_ETHUSDT'])
+    # **移除包含 NaN 的行**
+    df = df.dropna()
+
+    y_train = df['target_ETHUSDT'].values
+    X_train = df.drop(columns=['target_ETHUSDT']).values
 
     print(f"Training data shape: {X_train.shape}, {y_train.shape}")
+
+    # **再次检查是否仍然有 NaN**
+    if np.isnan(X_train).sum() > 0 or np.isnan(y_train).sum() > 0:
+        print("[ERROR] 数据仍然包含 NaN，检查数据预处理流程！")
+        return
 
     # **定义模型**
     if MODEL == "LinearRegression":
@@ -66,8 +74,8 @@ def train_model(timeframe):
         model = KernelRidge()
     elif MODEL == "BayesianRidge":
         model = BayesianRidge()
-    elif MODEL == "kNN":  # ✅ **新增 kNN 选项**
-        model = KNeighborsRegressor(n_neighbors=5)  # k=5
+    elif MODEL == "kNN":
+        model = KNeighborsRegressor(n_neighbors=5)
     else:
         raise ValueError("Unsupported model")
     
