@@ -58,12 +58,13 @@ def train_model(timeframe):
 
     df = df.dropna()
     y_train = df['target_ETHUSDT'].values
-    X_train = df.drop(columns=['target_ETHUSDT'])  # ✅ 保留 DataFrame 结构，避免 KNeighborsRegressor 警告
+    X_train = df.drop(columns=['target_ETHUSDT'])
 
     print(f"[DEBUG] X_train Shape: {X_train.shape}, y_train Shape: {y_train.shape}")
-    print(f"[DEBUG] X_train columns: {X_train.columns.tolist()}")  # ✅ 确保特征列正确
+    print(f"[DEBUG] X_train columns: {X_train.columns.tolist()}")
 
-    if np.isnan(X_train).sum() > 0 or np.isnan(y_train).sum() > 0:
+    # **正确检测 `NaN`**
+    if X_train.isna().any().any() or np.isnan(y_train).any():
         print("[ERROR] 数据仍然包含 NaN，检查数据预处理流程！")
         return
 
