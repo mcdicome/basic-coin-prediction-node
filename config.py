@@ -9,7 +9,7 @@ data_base_path = os.path.join(app_base_path, "data")
 model_file_path = os.path.join(data_base_path, "model.pkl")
 
 TOKEN = os.getenv("TOKEN", "").upper()
-TRAINING_DAYS = os.getenv("TRAINING_DAYS")
+TRAINING_DAYS = int(os.getenv("TRAINING_DAYS", "30"))  # 默认值 30 天
 TIMEFRAME = os.getenv("TIMEFRAME")
 
 # **✅ 增加默认模型，并确保支持 kNN**
