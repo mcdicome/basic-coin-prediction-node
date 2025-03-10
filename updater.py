@@ -56,6 +56,7 @@ def download_binance_daily_data(pair, training_days, region, download_path):
     :param download_path: 存储路径
     :return: 处理后的 Pandas DataFrame（包含 81 个特征）
     """
+    training_days = int(training_days)  # 确保是整数
     base_url = f"https://data.binance.vision/data/spot/daily/klines"
     end_date = date.today()
     start_date = end_date - timedelta(days=int(training_days))
