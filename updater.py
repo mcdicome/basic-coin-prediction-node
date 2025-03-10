@@ -167,7 +167,7 @@ def download_binance_daily_data(pair, training_days, region, download_path):
     return df_final
 
 def download_binance_current_day_data(pair, region):
-    """获取最新 1m K 线数据，并生成 81 维特征"""
+    """从 Binance API 获取最新 1m K 线数据，并生成 81 维特征"""
     limit = 1000
     url = f'https://api.binance.{region}/api/v3/klines?symbol={pair}&interval=1m&limit={limit}'
 
@@ -179,17 +179,27 @@ def download_binance_current_day_data(pair, region):
                "taker_buy_base_vol", "taker_buy_quote_vol", "ignore"]
 
     df = pd.DataFrame(response.json(), columns=columns)
-    df["timestamp"] = pd.to_numeric(df["timestamp"], errors="coerce")
-    df = df[(df["timestamp"] > 1000000000000) & (df["timestamp"] < 32503680000000)]
+
+    # **确保数据正确**
+    if "open" not in df.columns:
+        print("[ERROR] 'open' column is missing from Binance API response!")
+        return None
+
     df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", errors="coerce")
     df = df.dropna(subset=["timestamp"])
     df.set_index("timestamp", inplace=True)
     df = df[["open", "high", "low", "close"]].astype(float)
 
+    # **添加 ETHUSDT 滞后特征**
     df = create_lag_features(df, "ETHUSDT")
+
+    # **确保 `hour_of_day` 存在**
     df["hour_of_day"] = df.index.hour
+
+    # **计算目标变量 `target_ETHUSDT`**
     df["target_ETHUSDT"] = df["close"].shift(-1) - df["close"]
 
+    # **选择最终 81 维特征**
     selected_columns = [
         f"ETHUSDT_open_lag{i}" for i in range(1, 11)] + \
         [f"ETHUSDT_high_lag{i}" for i in range(1, 11)] + \
