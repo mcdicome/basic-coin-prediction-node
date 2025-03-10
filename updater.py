@@ -7,6 +7,37 @@ import pathlib
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+def download_and_extract(single_date, pair):
+    """下载并解压 Binance 数据"""
+    base_url = f"https://data.binance.vision/data/spot/daily/klines"
+    url = f"{base_url}/{pair}/1m/{pair}-1m-{single_date}.zip"
+    
+    download_path = "./data/binance"
+    os.makedirs(download_path, exist_ok=True)
+    
+    file_path = os.path.join(download_path, f"{pair}-1m-{single_date}.zip")
+    extracted_path = os.path.join(download_path, f"{pair}-1m-{single_date}.csv")
+
+    if os.path.exists(extracted_path):
+        print(f"[SKIP] Already downloaded: {extracted_path}")
+        return extracted_path
+
+    response = requests.get(url, stream=True)
+    if response.status_code == 200:
+        with open(file_path, 'wb') as f:
+            f.write(response.content)
+        print(f"[SUCCESS] Downloaded: {file_path}")
+    else:
+        print(f"[ERROR] File not found: {url}")
+        return None
+
+    # **解压**
+    with ZipFile(file_path, 'r') as zip_ref:
+        zip_ref.extractall(download_path)
+    os.remove(file_path)
+
+    return extracted_path
+    
 def create_lag_features(df, col_prefix, lags=10):
     """创建滞后特征"""
     for lag in range(1, lags + 1):
@@ -31,6 +62,14 @@ def download_binance_daily_data(pair, training_days, region, download_path):
         results_btc = executor.map(lambda d: download_and_extract(d, "BTCUSDT"), [start_date + timedelta(n) for n in range(training_days)])
         file_paths.extend(filter(None, results_eth))
         file_paths.extend(filter(None, results_btc))
+
+    # **检查文件路径是否正确**
+    if not file_paths:
+        print("[ERROR] No data files were downloaded.")
+        return None
+
+    print(f"[DEBUG] Downloaded {len(file_paths)} files.")
+    return file_paths
 
     # 读取 ETHUSDT 和 BTCUSDT 数据
     def load_binance_data(file_path, pair):
