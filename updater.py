@@ -7,6 +7,55 @@ import pathlib
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+def download_binance_current_day_data(pair, region):
+    """从 Binance API 获取最新 1m K 线数据，并生成 81 维特征"""
+    import requests
+
+    limit = 1000
+    url = f'https://api.binance.{region}/api/v3/klines?symbol={pair}&interval=1m&limit={limit}'
+
+    response = requests.get(url)
+    response.raise_for_status()
+
+    columns = ["timestamp", "open", "high", "low", "close", "volume",
+               "close_time", "quote_asset_volume", "n_trades",
+               "taker_buy_base_vol", "taker_buy_quote_vol", "ignore"]
+
+    df = pd.DataFrame(response.json(), columns=columns)
+
+    # **确保 timestamp 正确**
+    df["timestamp"] = pd.to_numeric(df["timestamp"], errors="coerce")
+
+    # 过滤无效数据
+    df = df[(df["timestamp"] > 1000000000000) & (df["timestamp"] < 32503680000000)]
+    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", errors="coerce")
+    df = df.dropna(subset=["timestamp"])
+
+    df.set_index("timestamp", inplace=True)
+    df = df[["open", "high", "low", "close"]].astype(float)
+
+    # **生成 81 维滞后特征**
+    df = create_lag_features(df, pair)
+
+    # **添加 hour_of_day**
+    df["hour_of_day"] = df.index.hour
+
+    # **计算 target_ETHUSDT**
+    df["target_ETHUSDT"] = df["close"].shift(-1) - df["close"]
+
+    # **选择最终 81 个特征**
+    selected_columns = [
+        f"{pair}_open_lag{i}" for i in range(1, 11)] + \
+        [f"{pair}_high_lag{i}" for i in range(1, 11)] + \
+        [f"{pair}_low_lag{i}" for i in range(1, 11)] + \
+        [f"{pair}_close_lag{i}" for i in range(1, 11)] + \
+        ["hour_of_day", "target_ETHUSDT"]
+
+    df_final = df[selected_columns].dropna()
+    print(f"[DEBUG] Current day DataFrame shape (should be 81 columns): {df_final.shape}")
+
+    return df_final
+    
 # 下载 Binance 历史数据，并处理 81 个特征
 def download_binance_daily_data(pair, training_days, region, download_path):
     training_days = int(training_days)  # 确保是整数
