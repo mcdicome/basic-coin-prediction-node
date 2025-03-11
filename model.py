@@ -28,14 +28,14 @@ def download_data(token, training_days, region, data_provider=None):
     print(f"[DEBUG] Downloaded {df.shape[0]} rows with {df.shape[1]} features.")
     return df
 
-def format_data(df):
+def format_data(df, data_provider=None):
     """格式化 81 维特征的数据"""
     if df is None or df.empty:
-        print("[ERROR] No data available to format.")
+        print("[ERROR] No data available.")
         return
     
     df.to_csv(training_price_data_path, index=True)
-    print(f"[SUCCESS] Formatted data saved to {training_price_data_path}")
+    print(f"Formatted data saved to {training_price_data_path}")
 
 def load_frame(frame, timeframe):
     """加载 81 维特征的 DataFrame"""
