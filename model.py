@@ -110,9 +110,26 @@ def get_inference(token, timeframe, region, data_provider):
     print(f"[DEBUG] Current day DataFrame shape (should be 81 columns): {X_new.shape}")
     print(X_new.head())
 
-    # **确保数据结构匹配**
-    X_new = X_new.drop(columns=["target_ETHUSDT"], errors="ignore")  # 确保目标列不在输入数据里
-    X_new = X_new.to_numpy().reshape(1, -1)  # 转换为 NumPy 数组
+    # **确保只选取 81 维特征，不包括 `target_ETHUSDT`**
+    selected_columns = [
+        f"ETHUSDT_open_lag{i}" for i in range(1, 11)] + \
+        [f"ETHUSDT_high_lag{i}" for i in range(1, 11)] + \
+        [f"ETHUSDT_low_lag{i}" for i in range(1, 11)] + \
+        [f"ETHUSDT_close_lag{i}" for i in range(1, 11)] + \
+        [f"BTCUSDT_open_lag{i}" for i in range(1, 11)] + \
+        [f"BTCUSDT_high_lag{i}" for i in range(1, 11)] + \
+        [f"BTCUSDT_low_lag{i}" for i in range(1, 11)] + \
+        [f"BTCUSDT_close_lag{i}" for i in range(1, 11)] + \
+        ["hour_of_day"]
+
+    # **只保留需要的 81 维特征**
+    X_new = X_new[selected_columns]
+
+    # **检查维度**
+    print(f"[DEBUG] Filtered X_new shape (should be (1, 81)): {X_new.shape}")
+
+    # **转换为 NumPy 数组**
+    X_new = X_new.iloc[-1:].to_numpy()  # 只取最新一行
     print(f"[DEBUG] X_new Shape for prediction: {X_new.shape}")
 
     try:
