@@ -37,7 +37,7 @@ def download_data(token, training_days, region, data_provider=None):
     return download_data_binance(token, training_days, region)
 
 
-def format_data(df):
+def format_data(df, data_provider=None):
     """格式化数据并保存"""
     if df is None or df.empty:
         print("[ERROR] No data available.")
