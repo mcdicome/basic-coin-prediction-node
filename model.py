@@ -61,7 +61,7 @@ def load_frame(frame):
     return df
 
 
-def train_model():
+def train_model(timeframe=None):
     """训练机器学习模型"""
     df = pd.read_csv(training_price_data_path, index_col=0, parse_dates=True)
     df = load_frame(df)
