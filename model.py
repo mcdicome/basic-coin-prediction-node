@@ -94,37 +94,29 @@ def train_model(timeframe):
     print(f"Trained model saved to {model_file_path}")
 
 def get_inference(token, timeframe, region, data_provider):
-    """加载训练好的模型并进行推理"""
+    """加载模型并进行预测"""
     with open(model_file_path, "rb") as f:
         loaded_model = pickle.load(f)
 
-    # 获取最新 1m 数据
-    if data_provider == "binance":
-        df = download_binance_current_day_data(f"{TOKEN}USDT", region)
+    # 获取当前市场数据
+    if data_provider == "coingecko":
+        X_new = download_coingecko_current_day_data(token, CG_API_KEY)
     else:
-        raise ValueError("Unsupported data provider")
+        X_new = download_binance_current_day_data(f"{TOKEN}USDT", region)
 
-    # **确保 `create_lag_features()` 正确执行**
-    df = create_lag_features(df, "ETHUSDT")  
-    df = create_lag_features(df, "BTCUSDT")
+    if X_new is None or X_new.empty:
+        return {"error": "No valid data available for inference"}
 
-    # **确保 hour_of_day 存在**
-    df["hour_of_day"] = df.index.hour
+    print(f"[DEBUG] Current day DataFrame shape (should be 81 columns): {X_new.shape}")
+    print(X_new.head())
 
-    # **删除 NaN**
-    df = df.dropna()
+    # **确保数据结构匹配**
+    X_new = X_new.drop(columns=["target_ETHUSDT"], errors="ignore")  # 确保目标列不在输入数据里
+    X_new = X_new.to_numpy().reshape(1, -1)  # 转换为 NumPy 数组
+    print(f"[DEBUG] X_new Shape for prediction: {X_new.shape}")
 
-    # **去掉 target_ETHUSDT**
-    X_new = df.drop(columns=["target_ETHUSDT"], errors="ignore")
-
-    print(f"[DEBUG] X_new Shape: {X_new.shape}")
-    print(X_new.tail())
-
-    # **去掉列名，确保与训练时一致**
-    X_new = X_new.values
-
-    # **进行预测**
-    X_new = X_new.to_numpy()  # 确保数据结构匹配
-    current_price_pred = loaded_model.predict(X_new)
-
-    return current_price_pred[0]
+    try:
+        prediction = loaded_model.predict(X_new)
+        return prediction[0]
+    except Exception as e:
+        return {"error": str(e)}
