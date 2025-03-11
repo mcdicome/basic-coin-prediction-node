@@ -40,11 +40,21 @@ def download_and_extract(single_date, pair):
     
 def create_lag_features(df, col_prefix, lags=10):
     """创建滞后特征"""
+    required_cols = ["open", "high", "low", "close"]
+    missing_cols = [col for col in required_cols if col not in df.columns]
+
+    if missing_cols:
+        print(f"[ERROR] Missing columns in {col_prefix} data: {missing_cols}")
+        print(df.head())  # 🚨 打印数据检查结构
+        return df
+
     for lag in range(1, lags + 1):
         df[f"{col_prefix}_open_lag{lag}"] = df["open"].shift(lag)
         df[f"{col_prefix}_high_lag{lag}"] = df["high"].shift(lag)
         df[f"{col_prefix}_low_lag{lag}"] = df["low"].shift(lag)
         df[f"{col_prefix}_close_lag{lag}"] = df["close"].shift(lag)
+
+    print(f"[DEBUG] After applying create_lag_features(): {df.shape}")
     return df
 
 def download_binance_daily_data(pair, training_days, region, download_path):
@@ -183,12 +193,17 @@ def download_binance_current_day_data(pair, region):
     # **检查 open 是否存在**
     if "open" not in df.columns:
         print("[ERROR] 'open' column is missing from Binance API response!")
+        print(df.head())  # 🚨 打印数据检查结构
         return None
 
     df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", errors="coerce")
     df = df.dropna(subset=["timestamp"])
     df.set_index("timestamp", inplace=True)
     df = df[["open", "high", "low", "close"]].astype(float)
+
+    # **打印数据检查**
+    print(f"[DEBUG] DataFrame before applying create_lag_features(): {df.shape}")
+    print(df.head())
 
     # **创建 ETHUSDT 滞后特征**
     df = create_lag_features(df, "ETHUSDT")
@@ -210,6 +225,8 @@ def download_binance_current_day_data(pair, region):
     df_final = df[selected_columns].dropna()
 
     print(f"[DEBUG] Current day DataFrame shape (should be 81 columns): {df_final.shape}")
+    print(df_final.head())
+
     return df_final
 
 # 确保 `model.py` 能正确导入这些函数
