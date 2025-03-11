@@ -124,6 +124,7 @@ def get_inference(token, timeframe, region, data_provider):
     X_new = X_new.values
 
     # **进行预测**
+    X_new = X_new.to_numpy()  # 确保数据结构匹配
     current_price_pred = loaded_model.predict(X_new)
 
     return current_price_pred[0]
