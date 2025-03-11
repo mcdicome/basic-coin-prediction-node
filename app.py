@@ -19,7 +19,7 @@ def generate_inference(token):
         return Response(json.dumps({"error": error_msg}), status=400, mimetype='application/json')
 
     try:
-        inference = get_inference(token.upper(), TIMEFRAME, REGION, DATA_PROVIDER)
+        inference = get_inference(token.upper(), REGION)
         return Response(str(inference), status=200)
     except Exception as e:
         return Response(json.dumps({"error": str(e)}), status=500, mimetype='application/json')
