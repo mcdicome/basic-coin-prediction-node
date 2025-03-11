@@ -119,3 +119,5 @@ def download_binance_daily_data(pair, training_days, region, download_path):
     print(f"[DEBUG] Final DataFrame shape (should be 81 columns): {df_final.shape}")
     
     return df_final  # ✅ 返回 DataFrame，而不是 list
+    
+__all__ = ["download_binance_daily_data", "download_binance_current_day_data", "create_lag_features"]
