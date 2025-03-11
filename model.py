@@ -133,6 +133,7 @@ def get_inference(token, timeframe, region, data_provider):
     print(f"[DEBUG] X_new Shape for prediction: {X_new.shape}")
 
     try:
+        X_new = pd.DataFrame(X_new, columns=selected_columns)
         prediction = loaded_model.predict(X_new)
         return prediction[0]
     except Exception as e:
