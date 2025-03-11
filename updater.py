@@ -180,7 +180,7 @@ def download_binance_current_day_data(pair, region):
 
     df = pd.DataFrame(response.json(), columns=columns)
 
-    # **确保数据正确**
+    # **检查 open 是否存在**
     if "open" not in df.columns:
         print("[ERROR] 'open' column is missing from Binance API response!")
         return None
@@ -190,7 +190,7 @@ def download_binance_current_day_data(pair, region):
     df.set_index("timestamp", inplace=True)
     df = df[["open", "high", "low", "close"]].astype(float)
 
-    # **添加 ETHUSDT 滞后特征**
+    # **创建 ETHUSDT 滞后特征**
     df = create_lag_features(df, "ETHUSDT")
 
     # **确保 `hour_of_day` 存在**
@@ -208,8 +208,8 @@ def download_binance_current_day_data(pair, region):
         ["hour_of_day", "target_ETHUSDT"]
 
     df_final = df[selected_columns].dropna()
-    print(f"[DEBUG] Current day DataFrame shape (should be 81 columns): {df_final.shape}")
 
+    print(f"[DEBUG] Current day DataFrame shape (should be 81 columns): {df_final.shape}")
     return df_final
 
 # 确保 `model.py` 能正确导入这些函数
