@@ -19,7 +19,7 @@ training_price_data_path = os.path.join(data_base_path, "price_data.csv")
 scaler = StandardScaler()
 
 
-def download_data_binance(token, training_days, region):
+def download_data_binance(token, training_days, region, data_provider=None):
     """下载 Binance 历史数据（返回 81 维特征的 DataFrame）"""
     training_days = int(training_days)
     df = download_binance_daily_data(f"{token}USDT", training_days, region, binance_data_path)
