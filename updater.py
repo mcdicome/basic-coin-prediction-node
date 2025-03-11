@@ -60,12 +60,10 @@ def create_lag_features(df, col_prefix, lags=10):
 def download_binance_daily_data(pair, training_days, region, download_path):
     """下载 Binance 历史数据，并处理 ETHUSDT 和 BTCUSDT 的 81 维特征"""
     training_days = int(training_days)
-    base_url = f"https://data.binance.vision/data/spot/daily/klines"
     end_date = date.today()
     start_date = end_date - timedelta(days=training_days)
     os.makedirs(download_path, exist_ok=True)
 
-    # 下载 ETHUSDT 和 BTCUSDT
     file_paths = []
     with ThreadPoolExecutor() as executor:
         results_eth = executor.map(lambda d: download_and_extract(d, "ETHUSDT"), [start_date + timedelta(n) for n in range(training_days)])
@@ -121,112 +119,3 @@ def download_binance_daily_data(pair, training_days, region, download_path):
     print(f"[DEBUG] Final DataFrame shape (should be 81 columns): {df_final.shape}")
     
     return df_final  # ✅ 返回 DataFrame，而不是 list
-
-    # 读取 ETHUSDT 和 BTCUSDT 数据
-    def load_binance_data(file_path, pair):
-        df = pd.read_csv(file_path, header=None, names=[
-            "timestamp", "open", "high", "low", "close", "volume",
-            "close_time", "quote_asset_volume", "n_trades",
-            "taker_buy_base_vol", "taker_buy_quote_vol", "ignore"
-        ])
-        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", errors="coerce")
-        df = df.dropna(subset=["timestamp"])
-        df.set_index("timestamp", inplace=True)
-        df = df[["open", "high", "low", "close"]].astype(float)
-        return df
-
-    dfs_eth, dfs_btc = [], []
-    for file_path in file_paths:
-        if "ETHUSDT" in file_path:
-            dfs_eth.append(load_binance_data(file_path, "ETHUSDT"))
-        elif "BTCUSDT" in file_path:
-            dfs_btc.append(load_binance_data(file_path, "BTCUSDT"))
-
-    if not dfs_eth or not dfs_btc:
-        print("No ETHUSDT or BTCUSDT data downloaded.")
-        return None
-
-    df_eth = pd.concat(dfs_eth).sort_index()
-    df_btc = pd.concat(dfs_btc).sort_index()
-
-    # **创建 ETHUSDT 和 BTCUSDT 滞后特征**
-    df_eth = create_lag_features(df_eth, "ETHUSDT")
-    df_btc = create_lag_features(df_btc, "BTCUSDT")
-
-    # **合并 ETHUSDT 和 BTCUSDT 数据**
-    df_all = df_eth.merge(df_btc, left_index=True, right_index=True, how="inner")
-
-    df_all["hour_of_day"] = df_all.index.hour
-    df_all["target_ETHUSDT"] = df_all["ETHUSDT_close_lag1"].shift(-1) - df_all["ETHUSDT_close_lag1"]
-
-    # **最终 81 维特征**
-    selected_columns = [
-        f"ETHUSDT_open_lag{i}" for i in range(1, 11)] + \
-        [f"ETHUSDT_high_lag{i}" for i in range(1, 11)] + \
-        [f"ETHUSDT_low_lag{i}" for i in range(1, 11)] + \
-        [f"ETHUSDT_close_lag{i}" for i in range(1, 11)] + \
-        [f"BTCUSDT_open_lag{i}" for i in range(1, 11)] + \
-        [f"BTCUSDT_high_lag{i}" for i in range(1, 11)] + \
-        [f"BTCUSDT_low_lag{i}" for i in range(1, 11)] + \
-        [f"BTCUSDT_close_lag{i}" for i in range(1, 11)] + \
-        ["hour_of_day", "target_ETHUSDT"]
-
-    df_final = df_all[selected_columns].dropna()
-    print(f"[DEBUG] Final DataFrame shape (should be 81 columns): {df_final.shape}")
-    
-    return df_final
-
-def download_binance_current_day_data(pair, region):
-    """从 Binance API 获取 ETHUSDT 和 BTCUSDT 最新 1m K 线数据，并生成 81 维特征"""
-    limit = 1000
-    def fetch_data(symbol):
-        url = f'https://api.binance.{region}/api/v3/klines?symbol={symbol}&interval=1m&limit={limit}'
-        response = requests.get(url)
-        response.raise_for_status()
-
-        columns = ["timestamp", "open", "high", "low", "close", "volume",
-                   "close_time", "quote_asset_volume", "n_trades",
-                   "taker_buy_base_vol", "taker_buy_quote_vol", "ignore"]
-
-        df = pd.DataFrame(response.json(), columns=columns)
-        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", errors="coerce")
-        df = df.dropna(subset=["timestamp"])
-        df.set_index("timestamp", inplace=True)
-        return df[["open", "high", "low", "close"]].astype(float)
-
-    # 获取 ETHUSDT 和 BTCUSDT 数据
-    df_eth = fetch_data("ETHUSDT")
-    df_btc = fetch_data("BTCUSDT")
-
-    # **创建滞后特征**
-    df_eth = create_lag_features(df_eth, "ETHUSDT")
-    df_btc = create_lag_features(df_btc, "BTCUSDT")
-
-    # **合并 ETHUSDT 和 BTCUSDT**
-    df_all = df_eth.merge(df_btc, left_index=True, right_index=True, how="inner")
-
-    # **确保 `hour_of_day` 存在**
-    df_all["hour_of_day"] = df_all.index.hour
-
-    # **计算目标变量 `target_ETHUSDT`**
-    df_all["target_ETHUSDT"] = df_all["ETHUSDT_close_lag1"].shift(-1) - df_all["ETHUSDT_close_lag1"]
-
-    # **最终 81 维特征**
-    selected_columns = [
-        f"ETHUSDT_open_lag{i}" for i in range(1, 11)] + \
-        [f"ETHUSDT_high_lag{i}" for i in range(1, 11)] + \
-        [f"ETHUSDT_low_lag{i}" for i in range(1, 11)] + \
-        [f"ETHUSDT_close_lag{i}" for i in range(1, 11)] + \
-        [f"BTCUSDT_open_lag{i}" for i in range(1, 11)] + \
-        [f"BTCUSDT_high_lag{i}" for i in range(1, 11)] + \
-        [f"BTCUSDT_low_lag{i}" for i in range(1, 11)] + \
-        [f"BTCUSDT_close_lag{i}" for i in range(1, 11)] + \
-        ["hour_of_day", "target_ETHUSDT"]
-
-    df_final = df_all[selected_columns].dropna()
-
-    print(f"[DEBUG] Current day DataFrame shape (should be 81 columns): {df_final.shape}")
-    return df_final
-
-# 确保 `model.py` 能正确导入这些函数
-__all__ = ["download_binance_daily_data", "download_binance_current_day_data", "create_lag_features"]
