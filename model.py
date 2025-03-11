@@ -32,7 +32,7 @@ def download_data_binance(token, training_days, region, data_provider=None):
     return df
 
 
-def download_data(token, training_days, region):
+def download_data(token, training_days, region, data_provider=None):
     """下载 Binance 数据"""
     return download_data_binance(token, training_days, region)
 
