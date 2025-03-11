@@ -92,7 +92,7 @@ def train_model(timeframe):
 
     print(f"[SUCCESS] Trained model saved to {model_file_path}")
 
-def get_inference(token, timeframe, region):
+def get_inference(token, timeframe, region, data_provider=None):
     """加载模型并进行预测"""
     with open(model_file_path, "rb") as f:
         loaded_model = pickle.load(f)
