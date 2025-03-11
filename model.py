@@ -12,10 +12,14 @@ from config import data_base_path, model_file_path, TOKEN, MODEL, REGION
 binance_data_path = os.path.join(data_base_path, "binance")
 training_price_data_path = os.path.join(data_base_path, "price_data.csv")
 
-def download_data(token, training_days, region):
-    """下载 Binance 历史数据（返回 81 维特征的 DataFrame）"""
+def download_data(token, training_days, region, data_provider=None):
+    """下载 Binance 历史数据（支持 `data_provider` 参数）"""
     training_days = int(training_days)
-    df = download_binance_daily_data(f"{token}USDT", training_days, region, binance_data_path)
+    
+    if data_provider == "binance" or data_provider is None:
+        df = download_binance_daily_data(f"{token}USDT", training_days, region, binance_data_path)
+    else:
+        raise ValueError(f"[ERROR] Unsupported data provider: {data_provider}")
 
     if df is None or df.empty:
         print("[ERROR] 下载数据为空，检查 `download_binance_daily_data`")
