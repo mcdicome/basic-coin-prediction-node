@@ -116,7 +116,7 @@ def get_inference(token, region):
         loaded_model = pickle.load(f)
 
     # 获取当前市场数据
-    X_new = download_binance_current_day_data(f"{TOKEN}USDT", region)
+    X_new = download_binance_current_day_data(region)
 
     if X_new is None or X_new.empty:
         return {"error": "[ERROR] No valid data available for inference"}
